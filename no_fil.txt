@@ -1,0 +1,806 @@
+--################################################################################################################################################################
+--
+--  Description: Create an intermediate work table REV_DSL_SP_ST1_WORK_KENAN.
+--  This table will join KENAN revenue directly to fLVLT orders and rank the results.
+--
+--  Revision History:
+--  Version  Author   Date        Comments
+--  =======  =======  ==========  ======================================================================
+--  1.0      rwaller  10/05/2020  Initial Creation based off of REV_SOV_ST1_WORK_KENAN_Score.ddl
+--  2.0    AC54626  07/07/2021  Adding JD_GL_BUS_AR_CD
+-- 2.1    ac54626  07/20/2021   Added JDF_BDGT_AMT to the table
+--################################################################################################################################################################
+
+SET ECHO ON
+SET HEADING ON
+SET TIMING ON
+SET PAGESIZE 0
+SET FEEDBACK ON
+SET SERVEROUTPUT ON
+SET LINESIZE 2000
+SET SQLBLANKLINES ON
+
+ALTER SESSION ENABLE PARALLEL DDL;
+ALTER SESSION ENABLE PARALLEL DML;
+
+WHENEVER OSERROR EXIT 1;
+WHENEVER SQLERROR EXIT 1;
+
+PROMPT 'REV_SOV_ST1_WORK_KENAN_score.ddl started'
+PROMPT ''
+
+DECLARE
+  v_in VARCHAR2(1) := 'I';
+  v_out VARCHAR2(1) := 'O';
+  v_temp_table_name VARCHAR2(30) := 'REV_DSL_SP_ST1_KENAN_STEMP';
+  v_table_name VARCHAR2(30) := 'REV_DSL_SP_ST1_WORK_KENAN';
+  v_rank_logic VARCHAR2(32000);
+  v_score_logic VARCHAR2(32000);
+  v_actn_cd_filter VARCHAR2(32000);
+  v_date_filter VARCHAR2(32000);
+  v_rows INTEGER := 0;
+  v_rows2 INTEGER := 0;
+  INVALID_ARGUMENT EXCEPTION;
+  v_pass_nbr INTEGER := 1;
+BEGIN
+  DBMS_OUTPUT.ENABLE (1000000);
+  DBMS_OUTPUT.PUT_LINE('Table Name Parameter: ' || v_table_name);
+
+  EXECUTE IMMEDIATE ('TRUNCATE TABLE S2BETL.REV_DSL_SP_ST1_WORK_KENAN');
+  COMMIT;
+  DBMS_OUTPUT.PUT_LINE (to_char(systimestamp,'MM/DD/YYYY HH:MI:SS')||': Beginning load');
+
+  LOOP
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE(to_char(systimestamp,'MM/DD/YYYY HH:MI:SS')||': Pass Number Start: ' ||  v_pass_nbr);
+    --Delete Looping Temporary Table
+    EXECUTE IMMEDIATE ('TRUNCATE TABLE S2BETL.REV_DSL_SP_ST1_KENAN_STEMP');
+    COMMIT;
+    --Attempt the match
+
+    DBMS_APPLICATION_INFO.set_action(action_name => 'KENAN Direct Order Match');
+
+    INSERT /*+ PARALLEL(8) */ INTO REV_DSL_SP_ST1_KENAN_STEMP
+    (
+			s2b_line_item_score,
+			s2b_four_attrib_avg_score,
+			s2b_line_item_score_cnfdc,
+			REV_S2B_GL_PERIOD_START_DT,
+			f_revenue_detail_key_id,
+			in_out_cd,
+			REV_SOURCE_FILE_NAME,
+			REV_BILL_ACCOUNT_ODS_ID,
+			REV_BILLING_PRODUCT_COMPNT_ODS_ID,
+			S2B_BUS_KEY_CHECKSUM_ID,
+			REV_FINANCE_ACCOUNT_NBR,
+			REV_GL_MGMT_PRODUCT_CD,
+			REV_BILL_SERVICE_ID,
+			REV_PRODUCT_CD,
+			REV_PRODUCT_COMPNT_CD,
+			REV_PRODUCT_COMPNT_SUBTYP_CD,
+			REV_PRODUCT_SUBTYPE_CD,
+			REV_BANDWIDTH_CD,
+			REV_BRANDING_PRODUCT_CD,
+			REV_BRANDING_PRODUCT_NBR,
+			REV_SRC_TRANSACTION_TYPE_CD,
+			REV_SRC_TRANSACTION_TYPE_DESC,
+			REV_GL_FIN_PRODUCT_LINE_CD,
+			REV_GL_FIN_PRODUCT_CD,
+			REV_INVOICE_NBR,
+			REV_PRODUCT_INST_ID,
+			REV_SERV_COMPNT_ID,
+			REV_CIRCUIT_ID,
+			REV_BILL_CYCLE_CD,
+			REV_ORIG_INVOICE_DT,
+			REV_CHARGE_FROM_DT,
+			REV_CHARGE_TO_DT,
+			REV_GL_COMPANY_CD,
+			REV_GL_COMPANY_ODS_ID,
+			REV_GL_BUSINESS_AREA_CD,
+			REV_GL_BUSINESS_AREA_REGION_CD,
+			REV_GL_BUSINESS_AREA_ODS_ID,
+			REV_SAP_PROFIT_CTR_CD,
+			REV_SAP_ACCOUNT_CD,
+			REV_GL_ACCOUNT_CD,
+			REV_GL_ACCOUNT_ODS_ID,
+			
+			REV_DH_BILL_ACCOUNT_DSL_ID,
+			REV_DW_SOURCE_SYSTEM_CD,
+			REV_BILL_SOURCE_SYS_CD,
+			REV_DW_SECURE_COMPANY_NBR,
+			REV_NPA_NBR,
+			REV_NXX_NBR,
+			REV_F_REVENUE_DETAIL_SRC_TYP,
+			REV_JOURNAL_SOURCE_CD,
+			REV_GL_REVENUE_CATEGORY_CD,
+			REV_INCLUDED_IN_S2B_FLAG,
+			REV_META_LOAD_DATE,
+			REV_ENTERED_AMT,
+			REV_ENTERED_CURRENCY_CD,
+			REV_ENTERED_CURRENCY_ODS_ID,
+			REV_ACCOUNTED_AMT,
+			REV_ACCOUNTED_CURRENCY_CD,
+			REV_ACCOUNTED_CURRENCY_ODS_ID,
+			REV_ACCOUNTED_CONVERSION_DT,
+			REV_ACCOUNTED_CONVERSION_RT,
+			REV_USD_SPOT_AMT,
+			REV_USD_SPOT_CONVERSION_DT,
+			REV_USD_SPOT_CONVERSION_RT,
+			REV_USD_BUDGET_AMT,
+			REV_USD_BUDGET_CONVERSION_DT,
+			REV_USD_BUDGET_CER_ODS_ID,
+			REV_USD_BUDGET_CONVERSION_RT,
+			REV_USD_CURM_AMT,
+			REV_USD_CURM_CONVERSION_DT,
+			REV_USD_CURM_CER_ODS_ID,
+			REV_USD_CURM_CONVERSION_RT,
+			REV_AR_TRXN_LINE_ENTERED_AMT,
+			REV_AR_TRXN_LINE_ACCOUNTED_AMT,
+			REV_INDEX_AMT,
+			REV_TOTAL_AMORTIZED_AMT,
+			REV_TOTAL_AMORTIZED_PRE_MARKUP_AMT,
+			REV_TOTAL_PRODUCT_SERV_QTY,
+			REV_DOMINANT_PRODUCT_SERV_QTY,
+			ORDR_SALES_RPT_PERIOD_NBR,
+			ORDR_OPPTY_NBR,
+			SALES_ORDER_LINE_HIST_KEY_ID,
+			ORDR_SERV_ORDER_ACTION_TYP,
+			ORDR_SERV_ORDER_STATUS_CD,
+			ORDR_SUBMIT_DT,
+			ORDR_CMPLT_DT,
+			ORDR_BILL_START_DT,
+			ORDR_INSTALL_DT,
+			ORDR_BILL_STOP_DT,
+			ORDR_USD_MRC_INCR_AMT,
+			ORDR_TN_QTY,
+			ORDR_DW_SOURCE_SYSTEM_CD,
+			ORDR_CUST_ORDER_NBR,
+			ORDR_BILL_SERVICE_ID,
+			ORDR_PRODUCT_INST_ID,
+			ORDR_GL_MGMT_PRODUCT_CD,
+			ORDR_PRODUCT_CD,
+			ORDR_COMPNT_PRODUCT_CD,
+			ORDR_COMPNT_PRODUCT_NAME,
+			ORDR_CUST_COMMIT_DT,
+			ORDR_DW_LAST_MODIFY_DT,
+			S2B_SUM_ORDR_PER_ORDR_AMT,
+			S2B_SUM_REV_PER_ORDR_AMT,
+			S2B_SUM_ORDR_PER_OPPTY_AMT,
+			S2B_SUM_REV_PER_OPPTY_AMT,
+			ORDR_REV_NME_BILL_DT_SCORE,
+			ORDR_REV_BILL_DT_SCORE,
+			ORDR_REVNU_AMT_SCORE,
+			ORDR_ID_REV_AMT_SCORE,
+			ORDR_SALES_RPT_CATGRY_TYP,
+			META_LOAD_DATE,
+			META_LOAD_PROC_CD,
+			S2B_ORGN_CD,
+			cndts_score_match_nbr,
+			rev_score_bst_slctn_rank_nbr,
+			ordr_score_bst_slctn_rank_nbr,
+			s2b_line_item_match_rank
+    )
+    SELECT /*+ parallel(8) */
+			y.s2b_line_item_score,
+			y.s2b_four_attrib_avg_score,
+			y.s2b_line_item_score_cnfdc,
+			y.REV_S2B_GL_PERIOD_START_DT,
+			y.f_revenue_detail_key_id,
+			y.in_out_cd,
+			y.REV_SOURCE_FILE_NAME,
+			y.REV_BILL_ACCOUNT_ODS_ID,
+			y.REV_BILLING_PRODUCT_COMPNT_ODS_ID,
+			y.S2B_BUS_KEY_CHECKSUM_ID,
+			y.REV_FINANCE_ACCOUNT_NBR,
+			y.REV_GL_MGMT_PRODUCT_CD,
+			y.REV_BILL_SERVICE_ID,
+			y.REV_PRODUCT_CD,
+			y.REV_PRODUCT_COMPNT_CD,
+			y.REV_PRODUCT_COMPNT_SUBTYP_CD,
+			y.REV_PRODUCT_SUBTYPE_CD,
+			y.REV_BANDWIDTH_CD,
+			y.REV_BRANDING_PRODUCT_CD,
+			y.REV_BRANDING_PRODUCT_NBR,
+			y.REV_SRC_TRANSACTION_TYPE_CD,
+			y.REV_SRC_TRANSACTION_TYPE_DESC,
+			y.REV_GL_FIN_PRODUCT_LINE_CD,
+			y.REV_GL_FIN_PRODUCT_CD,
+			y.REV_INVOICE_NBR,
+			y.REV_PRODUCT_INST_ID,
+			y.REV_SERV_COMPNT_ID,
+			y.REV_CIRCUIT_ID,
+			y.REV_BILL_CYCLE_CD,
+			y.REV_ORIG_INVOICE_DT,
+			y.REV_CHARGE_FROM_DT,
+			y.REV_CHARGE_TO_DT,
+			y.REV_GL_COMPANY_CD,
+			y.REV_GL_COMPANY_ODS_ID,
+			y.REV_GL_BUSINESS_AREA_CD,
+			y.REV_GL_BUSINESS_AREA_REGION_CD,
+			y.REV_GL_BUSINESS_AREA_ODS_ID,
+			y.REV_SAP_PROFIT_CTR_CD,
+			y.REV_SAP_ACCOUNT_CD,
+			y.REV_GL_ACCOUNT_CD,
+			y.REV_GL_ACCOUNT_ODS_ID,
+			
+			y.REV_DH_BILL_ACCOUNT_DSL_ID,
+			y.REV_DW_SOURCE_SYSTEM_CD,
+			y.REV_BILL_SOURCE_SYS_CD,
+			y.REV_DW_SECURE_COMPANY_NBR,
+			y.REV_NPA_NBR,
+			y.REV_NXX_NBR,
+			y.REV_F_REVENUE_DETAIL_SRC_TYP,
+			y.REV_JOURNAL_SOURCE_CD,
+			y.REV_GL_REVENUE_CATEGORY_CD,
+			y.REV_INCLUDED_IN_S2B_FLAG,
+			y.REV_META_LOAD_DATE,
+			y.REV_ENTERED_AMT,
+			y.REV_ENTERED_CURRENCY_CD,
+			y.REV_ENTERED_CURRENCY_ODS_ID,
+			y.REV_ACCOUNTED_AMT,
+			y.REV_ACCOUNTED_CURRENCY_CD,
+			y.REV_ACCOUNTED_CURRENCY_ODS_ID,
+			y.REV_ACCOUNTED_CONVERSION_DT,
+			y.REV_ACCOUNTED_CONVERSION_RT,
+			y.REV_USD_SPOT_AMT,
+			y.REV_USD_SPOT_CONVERSION_DT,
+			y.REV_USD_SPOT_CONVERSION_RT,
+			y.REV_USD_BUDGET_AMT,
+			y.REV_USD_BUDGET_CONVERSION_DT,
+			y.REV_USD_BUDGET_CER_ODS_ID,
+			y.REV_USD_BUDGET_CONVERSION_RT,
+			y.REV_USD_CURM_AMT,
+			y.REV_USD_CURM_CONVERSION_DT,
+			y.REV_USD_CURM_CER_ODS_ID,
+			y.REV_USD_CURM_CONVERSION_RT,
+			y.REV_AR_TRXN_LINE_ENTERED_AMT,
+			y.REV_AR_TRXN_LINE_ACCOUNTED_AMT,
+			y.REV_INDEX_AMT,
+			y.REV_TOTAL_AMORTIZED_AMT,
+			y.REV_TOTAL_AMORTIZED_PRE_MARKUP_AMT,
+			y.REV_TOTAL_PRODUCT_SERV_QTY,
+			y.REV_DOMINANT_PRODUCT_SERV_QTY,
+			y.ORDR_SALES_RPT_PERIOD_NBR,
+			y.ORDR_OPPTY_NBR,
+			y.SALES_ORDER_LINE_HIST_KEY_ID,
+			y.ORDR_SERV_ORDER_ACTION_TYP,
+			y.ORDR_SERV_ORDER_STATUS_CD,
+			y.ORDR_SUBMIT_DT,
+			y.ORDR_CMPLT_DT,
+			y.ORDR_BILL_START_DT,
+			y.ORDR_INSTALL_DT,
+			y.ORDR_BILL_STOP_DT,
+			y.ORDR_USD_MRC_INCR_AMT,
+			y.ORDR_TN_QTY,
+			y.ORDR_DW_SOURCE_SYSTEM_CD,
+			y.ORDR_CUST_ORDER_NBR,
+			y.ORDR_BILL_SERVICE_ID,
+			y.ORDR_PRODUCT_INST_ID,
+			y.ORDR_GL_MGMT_PRODUCT_CD,
+			y.ORDR_PRODUCT_CD,
+			y.ORDR_COMPNT_PRODUCT_CD,
+			y.ORDR_COMPNT_PRODUCT_NAME,
+			y.ORDR_CUST_COMMIT_DT,
+			y.ORDR_DW_LAST_MODIFY_DT,
+			y.S2B_SUM_ORDR_PER_ORDR_AMT,
+			y.S2B_SUM_REV_PER_ORDR_AMT,
+			y.S2B_SUM_ORDR_PER_OPPTY_AMT,
+			y.S2B_SUM_REV_PER_OPPTY_AMT,
+			y.ORDR_REV_NME_BILL_DT_SCORE,
+			y.ORDR_REV_BILL_DT_SCORE,
+			y.ORDR_REVNU_AMT_SCORE,
+			y.ORDR_ID_REV_AMT_SCORE,
+			y.ORDR_SALES_RPT_CATGRY_TYP,
+			y.META_LOAD_DATE,
+			y.META_LOAD_PROC_CD,
+			y.S2B_ORGN_CD,
+           COUNT(1) OVER (PARTITION BY jd_jrnl_detl_fact_id) AS cndts_score_match_nbr,
+           RANK() OVER (PARTITION BY jd_jrnl_detl_fact_id,
+                                     in_out_cd
+                        ORDER BY s2b_line_item_score_cnfdc desc,
+                                 sov_oppty_id nulls last,
+                                 sales_order_line_hist_key_id DESC) AS rev_score_bst_slctn_rank_nbr,
+           RANK() OVER (PARTITION BY sales_order_line_hist_key_id
+                        ORDER BY s2b_line_item_score_cnfdc desc,
+                                 sov_oppty_id nulls last,
+                                 jd_jrnl_detl_fact_id DESC,
+                                 sals_to_bill_detl_id ) AS ordr_score_bst_slctn_rank_nbr,
+           RANK() OVER (PARTITION BY s2b_revnu_bus_key_checksum_id,
+                                     in_out_cd
+                        ORDER BY s2b_line_item_score_cnfdc DESC) AS s2b_line_item_match_rank,
+
+        FROM (  
+              SELECT  aa.*,
+                      ROUND(SUM(ordr_revnu_amt_score 
+                                + ordr_id_rev_amt_score 
+                                + ordr_rev_bill_dt_score 
+                                + ordr_rev_actv_bill_dt_score 
+                                + ordr_rev_nme_bill_dt_score 
+                                + oppty_ordr_amt_score 
+                                + oppty_revnu_amt_score 
+                                + oppty_ordr_revnu_amt_score 
+                                + oppty_clos_ordr_sbmsn_dt_score 
+                                + oppty_clos_ordrcmpltn_dt_score 
+                                + oppty_clos_revnu_bill_dt_score
+								+ bill_service_id_score) OVER (PARTITION BY aa.sales_order_line_hist_key_id,
+                                                                                     aa.jd_jrnl_detl_fact_id),2) AS s2b_line_item_score,
+                      ROUND(AVG(ordr_revnu_amt_score 
+                                + ordr_id_rev_amt_score 
+                                + ordr_rev_bill_dt_score 
+                                + ordr_rev_actv_bill_dt_score 
+                                + ordr_rev_nme_bill_dt_score 
+                                + oppty_ordr_amt_score 
+                                + oppty_revnu_amt_score 
+                                + oppty_ordr_revnu_amt_score 
+                                + oppty_clos_ordr_sbmsn_dt_score 
+                                + oppty_clos_ordrcmpltn_dt_score 
+                                + oppty_clos_revnu_bill_dt_score
+								+ bill_service_id_score) OVER (PARTITION BY s2b_revnu_pkg_cd,
+                                                                                     aa.pcpd_prod_cmpnt_cd,
+                                                                                     aa.sov_ordr_typ,
+                                                                                     s2b_rev_typ),2) AS s2b_four_attrib_avg_score,
+                      ROUND(ROUND(SUM(ordr_revnu_amt_score
+                                      + ordr_id_rev_amt_score
+                                      + ordr_rev_bill_dt_score
+                                      + ordr_rev_actv_bill_dt_score
+                                      + ordr_rev_nme_bill_dt_score
+                                      + oppty_ordr_amt_score
+                                      + oppty_revnu_amt_score
+                                      + oppty_ordr_revnu_amt_score
+                                      + oppty_clos_ordr_sbmsn_dt_score
+                                      + oppty_clos_ordrcmpltn_dt_score
+                                      + oppty_clos_revnu_bill_dt_score
+									  + bill_service_id_score) 
+                                      OVER (PARTITION BY sales_order_line_hist_key_id,
+                                       jd_jrnl_detl_fact_id ))/avg(ordr_revnu_amt_score
+                                       + ordr_id_rev_amt_score
+                                       + ordr_rev_bill_dt_score
+                                       + ordr_rev_actv_bill_dt_score
+                                       + ordr_rev_nme_bill_dt_score
+                                       + oppty_ordr_amt_score
+                                       + oppty_revnu_amt_score
+                                       + oppty_ordr_revnu_amt_score
+                                       + oppty_clos_ordr_sbmsn_dt_score
+                                       + oppty_clos_ordrcmpltn_dt_score
+                                       + oppty_clos_revnu_bill_dt_score
+									   + bill_service_id_score
+                                       + .1) OVER (PARTITION BY s2b_revnu_pkg_cd,
+                                                                aa.pcpd_prod_cmpnt_cd,
+                                                                aa.sov_ordr_typ,
+                                                                s2b_rev_typ),2) AS s2b_line_item_score_cnfdc
+                FROM (SELECT rdw.gl_period_start_dt AS REV_S2B_GL_PERIOD_START_DT,
+					   rdw.f_revenue_detail_key_id AS f_revenue_detail_key_id, -- Forgot to add to REVNU_ORDER_DETL_WORK DDL
+					   rdw.in_out_cd AS in_out_cd, -- Forgot to add to REVNU_ORDER_DETL_WORK DDL
+					   rdw.source_file_name AS REV_SOURCE_FILE_NAME,
+					   rdw.bill_account_ods_id AS REV_BILL_ACCOUNT_ODS_ID,
+					   rdw.billing_product_compnt_ods_id AS REV_BILLING_PRODUCT_COMPNT_ODS_ID,
+					   rdw.S2B_BUS_KEY_CHECKSUM_ID AS S2B_BUS_KEY_CHECKSUM_ID, -- Forgot to add to REVNU_ORDER_DETL_WORK DDL
+					   rdw.finance_account_nbr AS REV_FINANCE_ACCOUNT_NBR,
+					   rdw.gl_mgmt_product_cd AS REV_GL_MGMT_PRODUCT_CD,
+					   rdw.bill_service_id AS REV_BILL_SERVICE_ID,
+					   rdw.product_cd AS REV_PRODUCT_CD,
+					   rdw.product_compnt_cd AS REV_PRODUCT_COMPNT_CD,
+					   rdw.product_compnt_subtyp_cd AS REV_PRODUCT_COMPNT_SUBTYP_CD,
+					   rdw.product_subtype_cd AS REV_PRODUCT_SUBTYPE_CD,
+					   rdw.bandwidth_cd AS REV_BANDWIDTH_CD,
+					   rdw.branding_product_cd AS REV_BRANDING_PRODUCT_CD,
+					   rdw.branding_product_nbr AS REV_BRANDING_PRODUCT_NBR,
+					   rdw.src_transaction_type_cd AS REV_SRC_TRANSACTION_TYPE_CD,
+					   rdw.src_transaction_type_desc AS REV_SRC_TRANSACTION_TYPE_DESC,
+					   rdw.gl_fin_product_line_cd AS REV_GL_FIN_PRODUCT_LINE_CD,
+					   rdw.gl_fin_product_cd AS REV_GL_FIN_PRODUCT_CD,
+					   rdw.invoice_nbr AS REV_INVOICE_NBR,
+					   rdw.product_inst_id AS REV_PRODUCT_INST_ID,
+					   rdw.serv_compnt_id AS REV_SERV_COMPNT_ID,
+					   rdw.circuit_id AS REV_CIRCUIT_ID,
+					   rdw.bill_cycle_cd AS REV_BILL_CYCLE_CD,
+					   rdw.orig_invoice_dt AS REV_ORIG_INVOICE_DT,
+					   rdw.charge_from_dt AS REV_CHARGE_FROM_DT,
+					   rdw.charge_to_dt AS REV_CHARGE_TO_DT,
+					   rdw.gl_company_cd AS REV_GL_COMPANY_CD,
+					   rdw.gl_company_ods_id AS REV_GL_COMPANY_ODS_ID,
+					   rdw.gl_business_area_cd AS REV_GL_BUSINESS_AREA_CD,
+					   rdw.gl_business_area_region_cd AS REV_GL_BUSINESS_AREA_REGION_CD,
+					   rdw.gl_business_area_ods_id AS REV_GL_BUSINESS_AREA_ODS_ID,
+					   rdw.sap_profit_ctr_cd AS REV_SAP_PROFIT_CTR_CD,
+					   rdw.sap_account_cd AS REV_SAP_ACCOUNT_CD,
+					   rdw.gl_account_cd AS REV_GL_ACCOUNT_CD,
+					   rdw.gl_account_ods_id AS REV_GL_ACCOUNT_ODS_ID,
+					
+					   rdw.dh_bill_account_dsl_id AS REV_DH_BILL_ACCOUNT_DSL_ID,
+					   rdw.dw_source_system_cd AS REV_DW_SOURCE_SYSTEM_CD,
+					   rdw.bill_source_sys_cd AS REV_BILL_SOURCE_SYS_CD,
+					   rdw.dw_secure_company_nbr AS REV_DW_SECURE_COMPANY_NBR,
+					   rdw.npa_nbr AS REV_NPA_NBR,
+					   rdw.nxx_nbr AS REV_NXX_NBR,
+					   rdw.f_revenue_detail_src_typ AS REV_F_REVENUE_DETAIL_SRC_TYP,
+					   rdw.journal_source_cd AS REV_JOURNAL_SOURCE_CD,
+					   rdw.gl_revenue_category_cd AS REV_GL_REVENUE_CATEGORY_CD,
+					   'Y' AS REV_INCLUDED_IN_S2B_FLAG,
+					   rdw.meta_load_date AS REV_META_LOAD_DATE,
+					   rdw.entered_amt AS REV_ENTERED_AMT,
+					   rdw.entered_currency_cd AS REV_ENTERED_CURRENCY_CD,
+					   rdw.entered_currency_ods_id AS REV_ENTERED_CURRENCY_ODS_ID,
+					   rdw.accounted_amt AS REV_ACCOUNTED_AMT,
+					   rdw.accounted_currency_cd AS REV_ACCOUNTED_CURRENCY_CD,
+					   rdw.accounted_currency_ods_id AS REV_ACCOUNTED_CURRENCY_ODS_ID,
+					   rdw.accounted_conversion_dt AS REV_ACCOUNTED_CONVERSION_DT,
+					   rdw.accounted_conversion_rt AS REV_ACCOUNTED_CONVERSION_RT,
+					   rdw.usd_spot_amt AS REV_USD_SPOT_AMT,
+					   rdw.usd_spot_conversion_dt AS REV_USD_SPOT_CONVERSION_DT,
+					   rdw.usd_spot_conversion_rt AS REV_USD_SPOT_CONVERSION_RT,
+					   rdw.usd_budget_amt AS REV_USD_BUDGET_AMT,
+					   rdw.usd_budget_conversion_dt AS REV_USD_BUDGET_CONVERSION_DT,
+					   rdw.usd_budget_cer_ods_id AS REV_USD_BUDGET_CER_ODS_ID,
+					   rdw.usd_budget_conversion_rt AS REV_USD_BUDGET_CONVERSION_RT,
+					   rdw.usd_curm_amt AS REV_USD_CURM_AMT,
+					   rdw.usd_curm_conversion_dt AS REV_USD_CURM_CONVERSION_DT,
+					   rdw.usd_curm_cer_ods_id AS REV_USD_CURM_CER_ODS_ID,
+					   rdw.usd_curm_conversion_rt AS REV_USD_CURM_CONVERSION_RT,
+					   rdw.ar_trxn_line_entered_amt AS REV_AR_TRXN_LINE_ENTERED_AMT,
+					   rdw.ar_trxn_line_accounted_amt AS REV_AR_TRXN_LINE_ACCOUNTED_AMT,
+					   rdw.index_amt AS REV_INDEX_AMT,
+					   rdw.total_amortized_amt AS REV_TOTAL_AMORTIZED_AMT,
+					   rdw.total_amortized_pre_markup_amt AS REV_TOTAL_AMORTIZED_PRE_MARKUP_AMT,
+					   rdw.total_product_serv_qty AS REV_TOTAL_PRODUCT_SERV_QTY,
+					   rdw.dominant_product_serv_qty AS REV_DOMINANT_PRODUCT_SERV_QTY,
+					   dsl.sales_order_period_nbr AS ORDR_SALES_RPT_PERIOD_NBR,
+					   dsl.oppty_nbr AS ORDR_OPPTY_NBR,
+					   dsl.sales_order_line_hist_key_id AS SALES_ORDER_LINE_HIST_KEY_ID,
+					   dsl.serv_order_action_typ AS ORDR_SERV_ORDER_ACTION_TYP,
+					   dsl.serv_order_status_cd AS ORDR_SERV_ORDER_STATUS_CD,
+					   dsl.submit_dt AS ORDR_SUBMIT_DT,
+					   dsl.cmplt_dt AS ORDR_CMPLT_DT,
+					   dsl.bill_start_dt AS ORDR_BILL_START_DT,
+					   dsl.install_dt AS ORDR_INSTALL_DT,
+					   dsl.bill_stop_dt AS ORDR_BILL_STOP_DT,
+					   dsl.usd_mrc_incr_amt AS ORDR_USD_MRC_INCR_AMT,
+					   dsl.tn_qty AS ORDR_TN_QTY,
+					   dsl.dw_source_system_cd AS ORDR_DW_SOURCE_SYSTEM_CD,
+					   dsl.cust_order_nbr AS ORDR_CUST_ORDER_NBR,
+					   dsl.bill_service_id AS ORDR_BILL_SERVICE_ID,
+					   dsl.product_inst_id AS ORDR_PRODUCT_INST_ID,
+					   dsl.gl_mgmt_product_cd AS ORDR_GL_MGMT_PRODUCT_CD,
+					   dsl.product_cd AS ORDR_PRODUCT_CD,
+					   dsl.compnt_product_cd AS ORDR_COMPNT_PRODUCT_CD,
+					   dsl.compnt_product_name AS ORDR_COMPNT_PRODUCT_NAME,
+					   dsl.cust_commit_dt AS ORDR_CUST_COMMIT_DT,
+					   dsl.dw_last_modify_dt AS ORDR_DW_LAST_MODIFY_DT,
+					   SUM(dsl.usd_mrc_total_amt) OVER (PARTITION BY dsl.cust_order_nbr) AS S2B_SUM_ORDR_PER_ORDR_AMT,
+					   SUM(CASE
+							 WHEN rdw.in_out_cd = 'O' THEN rdw.usd_curm_amt*-1
+							 ELSE rdw.usd_curm_amt
+						   END) OVER (PARTITION BY dsl.cust_order_nbr) AS S2B_SUM_REV_PER_ORDR_AMT,
+					   SUM(dsl.usd_mrc_total_amt) OVER (PARTITION BY dsl.oppty_nbr) AS S2B_SUM_ORDR_PER_OPPTY_AMT,
+					   SUM(CASE
+							 WHEN rdw.in_out_cd = 'O' THEN rdw.usd_curm_amt*-1
+							 ELSE rdw.usd_curm_amt
+						   END) OVER (PARTITION BY dsl.oppty_nbr) AS S2B_SUM_REV_PER_OPPTY_AMT,
+					   0 AS ORDR_REV_NME_BILL_DT_SCORE,
+					   CASE
+						 WHEN rdw.in_out_cd = 'I'
+						   THEN CALC_SCORE ('ORDR_REV_BILL_DT_SCORE_I',
+											rdw.posted_dt - TRUNC(NVL(dsl.cmplt_dt, dsl.order_create_dt)) )
+						 ELSE CALC_SCORE ('ORDR_REV_BILL_DT_SCORE_O',
+										  rdw.posted_dt - TRUNC(NVL(dsl.cmplt_dt, dsl.order_create_dt)) )
+					   END AS ORDR_REV_BILL_DT_SCORE,
+					   CALC_SCORE ('PERCENTAGE_SCORE',
+								   ((ABS(dsl.usd_mrc_total_amt) + 0.001)/(ABS(rdw.usd_curm_amt)) + 0.001)) AS ORDR_REVNU_AMT_SCORE,
+					   CALC_SCORE ('PERCENTAGE_SCORE',
+								   (SUM(dsl.usd_mrc_total_amt) OVER (PARTITION BY dsl.cust_order_nbr) + DECODE(rdw.in_out_cd, 'I', 0.001, -.001))
+								   /(SUM(DECODE(rdw.IN_OUT_CD,'O', rdw.usd_curm_amt *-1,rdw.usd_curm_amt)) OVER (PARTITION BY dsl.cust_order_nbr) + DECODE(rdw.in_out_cd, 'I', 0.001, -.001)) ) AS ORDR_ID_REV_AMT_SCORE,
+					   dsl.sales_rpt_catgry_typ AS ORDR_SALES_RPT_CATGRY_TYP,
+					   TRUNC(SYSDATE) AS META_LOAD_DATE,
+					   rdw.meta_load_proc_cd || '_ORD' AS META_LOAD_PROC_CD,
+					   'REV_ORD' AS S2B_ORGN_CD
+				  FROM revnu_detail_work rdw
+				  JOIN s2b_sales_ordr_line_sum dsl
+					ON dsl.sel_rank = 1
+					AND NVL(dsl.S2B_ORDER_CLSFCTN,'~') <>'HOT CUT'
+					AND dsl.s2b_meta_load_proc_cd = 'KENAN'
+					AND NVL(dsl.serv_order_status_cd,'~') NOT IN ('Cancel','Rejected')
+					-- Below logic is part of the multi-pass matching logic.
+					-- We don't want to match any orders that we've already matched up.
+					AND NOT EXISTS (SELECT tar.sales_order_line_hist_key_id
+									  FROM s2betl.rev_dsl_sp_st1_work_kenan tar
+									  WHERE tar.sales_order_line_hist_key_id = dsl.sales_order_line_hist_key_id)
+					-- Business Key matching
+					AND rdw.finance_account_nbr = dsl.finance_account_nbr
+					AND rdw.product_inst_id = dsl.product_inst_id
+					AND NVL(rdw.bill_service_id,rdw.serv_compnt_id) = NVL(dsl.bill_service_id,dsl.serv_compnt_id)
+					AND rdw.gl_mgmt_product_cd = dsl.gl_mgmt_product_cd
+					AND rdw.gl_business_area_cd = dsl.gl_business_area_cd
+					-- Date Logic
+					AND CASE
+						  WHEN rdw.in_out_cd = 'I' and ROUND(TRUNC(rdw.posted_dt) - TRUNC(dsl.order_create_dt),-1) BETWEEN -300 AND 300 THEN 1
+						  WHEN rdw.in_out_cd = 'I' and ROUND(TRUNC(rdw.posted_dt) - TRUNC(dsl.cmplt_dt), -1) BETWEEN -300 AND 300 THEN 1
+						  WHEN rdw.in_out_cd = 'I' and ROUND(TRUNC(rdw.posted_dt) - TRUNC(dsl.install_dt), -1) BETWEEN -300 AND 300 THEN 1
+						  WHEN rdw.in_out_cd = 'O' and ROUND(TRUNC(rdw.posted_dt) - TRUNC(dsl.order_create_dt),-1) BETWEEN -300 AND 300 THEN 1  --Reset to -80 AND 30
+						  WHEN rdw.in_out_cd = 'O' and ROUND(TRUNC(rdw.posted_dt) - TRUNC(dsl.cmplt_dt), -1) BETWEEN -300 AND 300 THEN 1
+						  ELSE 0
+						END = 1
+				  WHERE rdw.meta_load_proc_cd IN ('KENAN_IN','KENAN_OUT')
+					-- Below logic is part of the multi-pass matching logic.
+					-- We don't want to match any revenue records that we've already matched up.
+					AND NOT EXISTS (SELECT tar.f_revenue_detail_key_id
+									  FROM s2betl.rev_dsl_sp_st1_work_kenan tar
+									  WHERE tar.f_revenue_detail_key_id = rdw.f_revenue_detail_key_id
+										AND tar.in_out_cd = rdw.in_out_cd)
+
+				)aa
+             )y
+        WHERE s2b_line_item_score_cnfdc >= .3; --Print record count of table
+
+    COMMIT;
+
+    DBMS_OUTPUT.PUT_LINE(to_char(systimestamp,'MM/DD/YYYY HH:MI:SS')||': Temp table built. Inserting into main table.');
+    DBMS_APPLICATION_INFO.set_action(action_name => 'LATIS Add to Final Data Set');
+
+    EXECUTE IMMEDIATE  '
+      INSERT INTO ' || v_table_name || '     -- Write temp table results to ST1 table for each pass
+      (
+       s2b_line_item_score,
+			s2b_four_attrib_avg_score,
+			s2b_line_item_score_cnfdc,
+			REV_S2B_GL_PERIOD_START_DT,
+			f_revenue_detail_key_id,
+			in_out_cd,
+			REV_SOURCE_FILE_NAME,
+			REV_BILL_ACCOUNT_ODS_ID,
+			REV_BILLING_PRODUCT_COMPNT_ODS_ID,
+			S2B_BUS_KEY_CHECKSUM_ID,
+			REV_FINANCE_ACCOUNT_NBR,
+			REV_GL_MGMT_PRODUCT_CD,
+			REV_BILL_SERVICE_ID,
+			REV_PRODUCT_CD,
+			REV_PRODUCT_COMPNT_CD,
+			REV_PRODUCT_COMPNT_SUBTYP_CD,
+			REV_PRODUCT_SUBTYPE_CD,
+			REV_BANDWIDTH_CD,
+			REV_BRANDING_PRODUCT_CD,
+			REV_BRANDING_PRODUCT_NBR,
+			REV_SRC_TRANSACTION_TYPE_CD,
+			REV_SRC_TRANSACTION_TYPE_DESC,
+			REV_GL_FIN_PRODUCT_LINE_CD,
+			REV_GL_FIN_PRODUCT_CD,
+			REV_INVOICE_NBR,
+			REV_PRODUCT_INST_ID,
+			REV_SERV_COMPNT_ID,
+			REV_CIRCUIT_ID,
+			REV_BILL_CYCLE_CD,
+			REV_ORIG_INVOICE_DT,
+			REV_CHARGE_FROM_DT,
+			REV_CHARGE_TO_DT,
+			REV_GL_COMPANY_CD,
+			REV_GL_COMPANY_ODS_ID,
+			REV_GL_BUSINESS_AREA_CD,
+			REV_GL_BUSINESS_AREA_REGION_CD,
+			REV_GL_BUSINESS_AREA_ODS_ID,
+			REV_SAP_PROFIT_CTR_CD,
+			REV_SAP_ACCOUNT_CD,
+			REV_GL_ACCOUNT_CD,
+			REV_GL_ACCOUNT_ODS_ID,
+			
+			REV_DH_BILL_ACCOUNT_DSL_ID,
+			REV_DW_SOURCE_SYSTEM_CD,
+			REV_BILL_SOURCE_SYS_CD,
+			REV_DW_SECURE_COMPANY_NBR,
+			REV_NPA_NBR,
+			REV_NXX_NBR,
+			REV_F_REVENUE_DETAIL_SRC_TYP,
+			REV_JOURNAL_SOURCE_CD,
+			REV_GL_REVENUE_CATEGORY_CD,
+			REV_INCLUDED_IN_S2B_FLAG,
+			REV_META_LOAD_DATE,
+			REV_ENTERED_AMT,
+			REV_ENTERED_CURRENCY_CD,
+			REV_ENTERED_CURRENCY_ODS_ID,
+			REV_ACCOUNTED_AMT,
+			REV_ACCOUNTED_CURRENCY_CD,
+			REV_ACCOUNTED_CURRENCY_ODS_ID,
+			REV_ACCOUNTED_CONVERSION_DT,
+			REV_ACCOUNTED_CONVERSION_RT,
+			REV_USD_SPOT_AMT,
+			REV_USD_SPOT_CONVERSION_DT,
+			REV_USD_SPOT_CONVERSION_RT,
+			REV_USD_BUDGET_AMT,
+			REV_USD_BUDGET_CONVERSION_DT,
+			REV_USD_BUDGET_CER_ODS_ID,
+			REV_USD_BUDGET_CONVERSION_RT,
+			REV_USD_CURM_AMT,
+			REV_USD_CURM_CONVERSION_DT,
+			REV_USD_CURM_CER_ODS_ID,
+			REV_USD_CURM_CONVERSION_RT,
+			REV_AR_TRXN_LINE_ENTERED_AMT,
+			REV_AR_TRXN_LINE_ACCOUNTED_AMT,
+			REV_INDEX_AMT,
+			REV_TOTAL_AMORTIZED_AMT,
+			REV_TOTAL_AMORTIZED_PRE_MARKUP_AMT,
+			REV_TOTAL_PRODUCT_SERV_QTY,
+			REV_DOMINANT_PRODUCT_SERV_QTY,
+			ORDR_SALES_RPT_PERIOD_NBR,
+			ORDR_OPPTY_NBR,
+			SALES_ORDER_LINE_HIST_KEY_ID,
+			ORDR_SERV_ORDER_ACTION_TYP,
+			ORDR_SERV_ORDER_STATUS_CD,
+			ORDR_SUBMIT_DT,
+			ORDR_CMPLT_DT,
+			ORDR_BILL_START_DT,
+			ORDR_INSTALL_DT,
+			ORDR_BILL_STOP_DT,
+			ORDR_USD_MRC_INCR_AMT,
+			ORDR_TN_QTY,
+			ORDR_DW_SOURCE_SYSTEM_CD,
+			ORDR_CUST_ORDER_NBR,
+			ORDR_BILL_SERVICE_ID,
+			ORDR_PRODUCT_INST_ID,
+			ORDR_GL_MGMT_PRODUCT_CD,
+			ORDR_PRODUCT_CD,
+			ORDR_COMPNT_PRODUCT_CD,
+			ORDR_COMPNT_PRODUCT_NAME,
+			ORDR_CUST_COMMIT_DT,
+			ORDR_DW_LAST_MODIFY_DT,
+			S2B_SUM_ORDR_PER_ORDR_AMT,
+			S2B_SUM_REV_PER_ORDR_AMT,
+			S2B_SUM_ORDR_PER_OPPTY_AMT,
+			S2B_SUM_REV_PER_OPPTY_AMT,
+			ORDR_REV_NME_BILL_DT_SCORE,
+			ORDR_REV_BILL_DT_SCORE,
+			ORDR_REVNU_AMT_SCORE,
+			ORDR_ID_REV_AMT_SCORE,
+			ORDR_SALES_RPT_CATGRY_TYP,
+			META_LOAD_DATE,
+			META_LOAD_PROC_CD,
+			S2B_ORGN_CD,
+			cndts_score_match_nbr,
+			rev_score_bst_slctn_rank_nbr,
+			ordr_score_bst_slctn_rank_nbr,
+			s2b_line_item_match_rank
+      )
+      SELECT DISTINCT
+             s2b_line_item_score,
+			s2b_four_attrib_avg_score,
+			s2b_line_item_score_cnfdc,
+			REV_S2B_GL_PERIOD_START_DT,
+			f_revenue_detail_key_id,
+			in_out_cd,
+			REV_SOURCE_FILE_NAME,
+			REV_BILL_ACCOUNT_ODS_ID,
+			REV_BILLING_PRODUCT_COMPNT_ODS_ID,
+			S2B_BUS_KEY_CHECKSUM_ID,
+			REV_FINANCE_ACCOUNT_NBR,
+			REV_GL_MGMT_PRODUCT_CD,
+			REV_BILL_SERVICE_ID,
+			REV_PRODUCT_CD,
+			REV_PRODUCT_COMPNT_CD,
+			REV_PRODUCT_COMPNT_SUBTYP_CD,
+			REV_PRODUCT_SUBTYPE_CD,
+			REV_BANDWIDTH_CD,
+			REV_BRANDING_PRODUCT_CD,
+			REV_BRANDING_PRODUCT_NBR,
+			REV_SRC_TRANSACTION_TYPE_CD,
+			REV_SRC_TRANSACTION_TYPE_DESC,
+			REV_GL_FIN_PRODUCT_LINE_CD,
+			REV_GL_FIN_PRODUCT_CD,
+			REV_INVOICE_NBR,
+			REV_PRODUCT_INST_ID,
+			REV_SERV_COMPNT_ID,
+			REV_CIRCUIT_ID,
+			REV_BILL_CYCLE_CD,
+			REV_ORIG_INVOICE_DT,
+			REV_CHARGE_FROM_DT,
+			REV_CHARGE_TO_DT,
+			REV_GL_COMPANY_CD,
+			REV_GL_COMPANY_ODS_ID,
+			REV_GL_BUSINESS_AREA_CD,
+			REV_GL_BUSINESS_AREA_REGION_CD,
+			REV_GL_BUSINESS_AREA_ODS_ID,
+			REV_SAP_PROFIT_CTR_CD,
+			REV_SAP_ACCOUNT_CD,
+			REV_GL_ACCOUNT_CD,
+			REV_GL_ACCOUNT_ODS_ID,
+			
+			REV_DH_BILL_ACCOUNT_DSL_ID,
+			REV_DW_SOURCE_SYSTEM_CD,
+			REV_BILL_SOURCE_SYS_CD,
+			REV_DW_SECURE_COMPANY_NBR,
+			REV_NPA_NBR,
+			REV_NXX_NBR,
+			REV_F_REVENUE_DETAIL_SRC_TYP,
+			REV_JOURNAL_SOURCE_CD,
+			REV_GL_REVENUE_CATEGORY_CD,
+			REV_INCLUDED_IN_S2B_FLAG,
+			REV_META_LOAD_DATE,
+			REV_ENTERED_AMT,
+			REV_ENTERED_CURRENCY_CD,
+			REV_ENTERED_CURRENCY_ODS_ID,
+			REV_ACCOUNTED_AMT,
+			REV_ACCOUNTED_CURRENCY_CD,
+			REV_ACCOUNTED_CURRENCY_ODS_ID,
+			REV_ACCOUNTED_CONVERSION_DT,
+			REV_ACCOUNTED_CONVERSION_RT,
+			REV_USD_SPOT_AMT,
+			REV_USD_SPOT_CONVERSION_DT,
+			REV_USD_SPOT_CONVERSION_RT,
+			REV_USD_BUDGET_AMT,
+			REV_USD_BUDGET_CONVERSION_DT,
+			REV_USD_BUDGET_CER_ODS_ID,
+			REV_USD_BUDGET_CONVERSION_RT,
+			REV_USD_CURM_AMT,
+			REV_USD_CURM_CONVERSION_DT,
+			REV_USD_CURM_CER_ODS_ID,
+			REV_USD_CURM_CONVERSION_RT,
+			REV_AR_TRXN_LINE_ENTERED_AMT,
+			REV_AR_TRXN_LINE_ACCOUNTED_AMT,
+			REV_INDEX_AMT,
+			REV_TOTAL_AMORTIZED_AMT,
+			REV_TOTAL_AMORTIZED_PRE_MARKUP_AMT,
+			REV_TOTAL_PRODUCT_SERV_QTY,
+			REV_DOMINANT_PRODUCT_SERV_QTY,
+			ORDR_SALES_RPT_PERIOD_NBR,
+			ORDR_OPPTY_NBR,
+			SALES_ORDER_LINE_HIST_KEY_ID,
+			ORDR_SERV_ORDER_ACTION_TYP,
+			ORDR_SERV_ORDER_STATUS_CD,
+			ORDR_SUBMIT_DT,
+			ORDR_CMPLT_DT,
+			ORDR_BILL_START_DT,
+			ORDR_INSTALL_DT,
+			ORDR_BILL_STOP_DT,
+			ORDR_USD_MRC_INCR_AMT,
+			ORDR_TN_QTY,
+			ORDR_DW_SOURCE_SYSTEM_CD,
+			ORDR_CUST_ORDER_NBR,
+			ORDR_BILL_SERVICE_ID,
+			ORDR_PRODUCT_INST_ID,
+			ORDR_GL_MGMT_PRODUCT_CD,
+			ORDR_PRODUCT_CD,
+			ORDR_COMPNT_PRODUCT_CD,
+			ORDR_COMPNT_PRODUCT_NAME,
+			ORDR_CUST_COMMIT_DT,
+			ORDR_DW_LAST_MODIFY_DT,
+			S2B_SUM_ORDR_PER_ORDR_AMT,
+			S2B_SUM_REV_PER_ORDR_AMT,
+			S2B_SUM_ORDR_PER_OPPTY_AMT,
+			S2B_SUM_REV_PER_OPPTY_AMT,
+			ORDR_REV_NME_BILL_DT_SCORE,
+			ORDR_REV_BILL_DT_SCORE,
+			ORDR_REVNU_AMT_SCORE,
+			ORDR_ID_REV_AMT_SCORE,
+			ORDR_SALES_RPT_CATGRY_TYP,
+			META_LOAD_DATE,
+			META_LOAD_PROC_CD,
+			S2B_ORGN_CD,
+			cndts_score_match_nbr,
+			rev_score_bst_slctn_rank_nbr,
+			ordr_score_bst_slctn_rank_nbr,
+			s2b_line_item_match_rank
+      FROM ' || v_temp_table_name || '
+      WHERE rev_score_bst_slctn_rank_nbr = 1
+        AND ordr_score_bst_slctn_rank_nbr = 1';
+
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE(to_char(systimestamp,'MM/DD/YYYY HH:MI:SS')||': Pass Number End: ' ||  v_pass_nbr);
+    --This is an execute immediate to prevent parser errors on the first run when the table does not exist.
+    EXECUTE IMMEDIATE ('SELECT /*+ parallel(8) */ COUNT(1)
+                          FROM REV_DSL_SP_ST1_KENAN_STEMP
+                          WHERE rev_score_bst_slctn_rank_nbr = 1
+                            and ordr_score_bst_slctn_rank_nbr = 1') INTO v_rows;
+    PRINT_COUNTS(v_rows);
+    v_pass_nbr := v_pass_nbr + 1; -- There is specific logic in first pass
+  EXIT WHEN (v_rows = 0 AND v_pass_nbr > 3) ;
+  END LOOP;
+
+  DBMS_OUTPUT.PUT_LINE('Loops finished.');
+
+  EXECUTE IMMEDIATE ('SELECT /*+ parallel(8) */ COUNT(1) FROM ' || v_table_name) INTO v_rows2;
+  PRINT_COUNTS(v_rows2);
+
+EXCEPTION
+  WHEN INVALID_ARGUMENT THEN RAISE_APPLICATION_ERROR(-20000, 'Invalid IN/OUT argument.');
+  WHEN OTHERS THEN RAISE;
+END;
+/
+
+PROMPT 'REV_SOV_ST1_WORK_SCORE.ddl ended successfully'
+PROMPT ''
